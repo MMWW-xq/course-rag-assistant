@@ -1,6 +1,10 @@
 "use client";
 import React, { useState, useRef, useEffect } from "react";
-
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 /**
  * Main Chat Interface Component.
  * Features:
@@ -12,7 +16,7 @@ export default function Home() {
     const [messages, setMessages] = useState([
         {
             role: "bot",
-            content: "Hello! I'm your AI assistant. How can I help you with your documents today?",
+            content: "学弟/学妹你好呀~ 我是你的专属贴心学姐。不管是晦涩难懂的学生手册，还是让人头秃的复习资料，都可以传给我，学姐来帮你整理~",
         },
     ]);
     const [query, setQuery] = useState("");
@@ -51,28 +55,44 @@ export default function Home() {
             { role: "user", content: currentQuery },
         ]);
 
-        try {
-            const res = await fetch("/api/chat", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ message: currentQuery }),
-            });
+            try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: currentQuery }),
+      });
 
-            const data = await res.json();
-            setMessages((prev) => [
-                ...prev,
-                { role: "bot", content: data.response },
-            ]);
-        } catch (err) {
-            console.error("Chat Error:", err);
-            setMessages((prev) => [
-                ...prev,
-                { role: "bot", content: "Sorry, I encountered an error processing your request." },
-            ]);
-        } finally {
-            setLoading(false);
+      if (!res.ok) throw new Error("Network response was not ok");
+
+      // 先塞入一个空的 AI 气泡，准备接收文字
+      setMessages((prev) => [...prev, { role: "bot", content: "" }]);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let done = false;
+      let fullText = "";
+
+      while (!done) {
+        const { value, done: doneReading } = await reader.read();
+        done = doneReading;
+        if (value) {
+          const chunk = decoder.decode(value, { stream: true });
+          fullText += chunk;
+          // 实时更新最后那个 AI 气泡里的文字
+                  setMessages((prev) => {
+            const newMessages = [...prev];
+            newMessages[newMessages.length - 1].content = fullText;
+            return newMessages;
+          });
         }
-    };
+      }
+    } catch (err) {
+      console.error("Chat Error:", err);
+      setMessages((prev) => [...prev, { role: "bot", content: "抱歉，网络开小差了。" }]);
+    } finally {
+      setLoading(false);
+    }
+  };  
 
     /**
      * Handle file selection and upload to the ingestion API.
@@ -120,43 +140,38 @@ export default function Home() {
 
     return (
         <div className="flex flex-col h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-indigo-500/30">
-            {/* Header */}
-            <header className="fixed top-0 inset-x-0 z-50 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-900 h-16 flex items-center justify-between px-4">
-                <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-                        <svg
-                            className="w-5 h-5 text-white"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                        >
-                            <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M13 10V3L4 14h7v7l9-11h-7z"
-                            />
-                        </svg>
-                    </div>
-                    <h1 className="text-xl font-bold bg-gradient-to-r from-white to-zinc-400 bg-clip-text text-transparent hidden sm:block">
-                        RAG Assistant
-                    </h1>
-                </div>
+                 {/* Header */}
+      <header className="fixed top-0 inset-x-0 z-50 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-900 h-16 flex items-center justify-between px-4">
+        {/* 左侧 Logo 和 标题区域 */}
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </div>
+          <div>
+            <h1 className="text-xl font-bold bg-gradient-to-r from-white to-zinc-400 bg-clip-text text-transparent hidden sm:block">
+              🌸 阅微
+            </h1>
+            <p className="text-xs text-zinc-400 mt-0.5 hidden sm:block">见微知著 · 你的校园认知与知识重构空间</p>
+          </div>
+        </div>
 
-                <button
-                    onClick={() => setIsUploadModalOpen(true)}
-                    className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-zinc-300 bg-zinc-900 border border-zinc-800 rounded-lg hover:bg-zinc-800 hover:text-white transition-all focus:ring-2 focus:ring-indigo-500/50 outline-none"
-                    aria-label="Upload Document"
-                >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                    </svg>
-                    Upload Doc
-                </button>
-            </header>
+        {/* 右侧 按钮 */}
+        <button
+          onClick={() => setIsUploadModalOpen(true)}
+          className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-zinc-300 bg-zinc-900 border border-zinc-800 rounded-lg hover:bg-zinc-800 transition-colors"
+          aria-label="Upload Document"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+          </svg>
+          投喂资料给学姐
+        </button>
+      </header>
 
             {/* Main Chat Area */}
-            <main className="flex-1 overflow-y-auto pt-24 pb-32 px-4 scroll-smooth scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent">
+            <main className="flex-1 overflow-y-auto pt-24 pb-64 px-4 scroll-smooth scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent">
                 <div className="max-w-3xl mx-auto space-y-8">
                     {messages.map((msg, idx) => (
                         <div
@@ -209,9 +224,15 @@ export default function Home() {
                                         : "bg-zinc-900 border border-zinc-800 text-zinc-200 rounded-tl-none"
                                     }`}
                             >
-                                <div className="bg-transparent whitespace-pre-wrap break-words">
-                                    {msg.content}
-                                </div>
+                                            <div className="bg-transparent break-words text-sm leading-relaxed overflow-x-auto">
+                  {/* @ts-ignore */}
+                  <ReactMarkdown 
+                    remarkPlugins={[remarkGfm, remarkMath]} 
+                    rehypePlugins={[rehypeKatex]}
+                  >
+                    {msg.content}
+                  </ReactMarkdown>
+                </div>
                             </div>
                         </div>
                     ))}
@@ -253,6 +274,44 @@ export default function Home() {
             {/* Input Area */}
             <div className="fixed bottom-0 inset-x-0 bg-gradient-to-t from-zinc-950 pt-20 pb-8 z-40 pointer-events-none">
                 <div className="max-w-3xl mx-auto px-4 pointer-events-auto">
+                                                      {/* 快捷指令按钮组 */}
+          <div className="flex gap-2 mb-3 overflow-x-auto pb-1">
+            {["📝 提炼3个核心考点", "🔍 这个文件有什么限制条款？", "💡 出两道题考考我"].map((text, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setQuery(text)}
+                className="whitespace-nowrap text-xs px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-300 hover:bg-zinc-700 border border-zinc-700 transition-colors"
+              >
+                {text}
+              </button>
+            ))}
+          </div>
+
+          {/* 人设切换区域 */}
+          <div className="flex gap-2 mb-3">
+            <button 
+              type="button" 
+              onClick={() => setQuery("请用温柔学姐的语气回答：")} 
+              className="text-xs px-3 py-1.5 bg-pink-900/40 text-pink-300 rounded-full border border-pink-700/50 hover:bg-pink-900/60 transition-colors"
+            >
+              🌸 温柔学姐
+            </button>
+            <button 
+              type="button" 
+              onClick={() => setQuery("请用暴躁教授的语气，带点恨铁不成钢的情绪回答：")} 
+              className="text-xs px-3 py-1.5 bg-red-900/40 text-red-300 rounded-full border border-red-700/50 hover:bg-red-900/60 transition-colors"
+            >
+              🤬 暴躁教授
+            </button>
+            <button 
+              type="button" 
+              onClick={() => setQuery("请用极其精简的机器人风格回答：")} 
+              className="text-xs px-3 py-1.5 bg-blue-900/40 text-blue-300 rounded-full border border-blue-700/50 hover:bg-blue-900/60 transition-colors"
+            >
+              🤖 无情机器
+            </button>
+          </div>
                     <form
                         onSubmit={handleSubmit}
                         className="relative flex items-center gap-2 bg-zinc-900/90 backdrop-blur-xl border border-zinc-800 p-2 rounded-2xl shadow-2xl shadow-black/50 transition-all focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500/50"
@@ -263,7 +322,7 @@ export default function Home() {
                             name="message"
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
-                            placeholder="Ask anything about your documents..."
+                            placeholder="有什么烦恼都可以告诉学姐哦，比如：'我挂科了还能拿奖学金吗？'..."
                             className="flex-1 bg-transparent text-zinc-100 placeholder-zinc-500 px-4 py-3 outline-none min-w-0"
                         />
                         <button
@@ -300,7 +359,7 @@ export default function Home() {
                 <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
                     <div className="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
                         <div className="flex justify-between items-center mb-6">
-                            <h2 className="text-xl font-bold text-white">Upload Document</h2>
+                            <h2 className="text-xl font-bold text-white">投喂资料给学姐</h2>
                             <button
                                 onClick={() => setIsUploadModalOpen(false)}
                                 className="text-zinc-500 hover:text-white transition-colors"
@@ -330,7 +389,7 @@ export default function Home() {
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                                     </svg>
                                 </div>
-                                <p className="text-sm text-zinc-400 font-medium group-hover:text-zinc-200 transition-colors">Click to upload or drag and drop</p>
+                                <p className="text-sm text-zinc-400 font-medium group-hover:text-zinc-200 transition-colors">点击上传，或者把资料拖进来</p>
                                 <p className="text-xs text-zinc-600 mt-1">Supported formats: PDF, TXT (Max 5MB)</p>
                             </div>
 

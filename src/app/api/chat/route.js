@@ -37,25 +37,61 @@ export async function POST(req) {
         messages: [
           { 
             role: "system", 
-            content: `你是一个课程助手。请务必根据以下背景信息回答用户的问题。如果背景信息里没有答案，就说不知道。\n\n背景信息：\n${context}` 
+                        content: `你现在是“阅微学姐”，不仅温柔知性，而且具备极强的学术分析和信息检索能力。你正在帮助学弟学妹解答关于校园制度或学术资料的疑问。
+
+【核心纪律】：
+1. **严格溯源**：你的一切回答必须严格基于下面提供的【背景信息】。在回答的最后，必须注明你的结论是基于资料的哪一部分得出的（例如：“学姐是从资料的第 2 段帮你找到的哦”）。
+2. **结构化输出**：如果内容较多，请务必用 Markdown 的“列表（-）”或“加粗（**）”来排版，让学弟学妹一目了然。
+3. **情绪价值**：语气要亲切、耐心。多用“呀”、“呢”、“哦”，多给学弟学妹鼓励（比如：“别着急，学姐帮你梳理出来了”）。
+4. **边界约束**：如果资料里没有，你要温柔地拒绝：“哎呀，学姐帮你仔细检索了这份文件，里面确实没有记录呢。建议你去教务系统确认一下哦，别急~”
+5. **听从调令**：如果用户提问中包含了特定的语气要求（比如“请用暴躁教授的语气”），请优先完美地扮演该角色，抛开温柔人设。
+6. **公式格式**：在输出数学公式时，请务必使用 $ 包裹行内公式（例如：$x^2$），使用 $$ 包裹独立成行的块级公式。严禁使用反斜杠加括号的格式！
+
+【背景信息】：
+${context}`
           },
           { role: "user", content: message }
         ],
-        stream: false
+        stream: true
       })
     });
 
-    if (!response.ok) {
+      if (!response.ok) {
       const errorText = await response.text();
       console.error("🚨 智谱接口报错了:", errorText);
       return NextResponse.json({ error: "请求AI失败" }, { status: 500 });
     }
 
-    const data = await response.json();
-    console.log("✅ 智谱返回成功！");
-    const aiText = data.choices[0].message.content;
+    // 开启流式响应
+    const encoder = new TextEncoder();
+    const readableStream = new ReadableStream({
+      async start(controller) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value);
+          const lines = chunk.split("\n");
+          for (const line of lines) {
+            if (line.startsWith("data: ") && line !== "data: [DONE]") {
+              try {
+                const data = JSON.parse(line.slice(6));
+                const content = data.choices[0].delta.content;
+                if (content) {
+                  controller.enqueue(encoder.encode(content));
+                }
+              } catch (e) {}
+            }
+          }
+        }
+        controller.close();
+      },
+    });
 
-    return NextResponse.json({ response: aiText });
+    return new Response(readableStream, {
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
 
   } catch (error) {
     console.error("🚨 本机代码报错:", error);
