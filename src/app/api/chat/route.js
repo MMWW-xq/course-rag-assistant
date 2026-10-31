@@ -5,20 +5,26 @@ import path from "path";
 export async function POST(req) {
   try {
     const body = await req.json();
-    const message = body?.message;
-    console.log("\n=== 收到消息:", message);
+const messages = body?.messages; // 接收前端传来的历史数组
+
+if (!messages || !Array.isArray(messages)) {
+  return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+}
+const currentQuestion = messages[messages.length - 1].content;
+        console.log("\n=== 收到最新问题:", currentQuestion);
 
     const apiKey = process.env.OPENAI_API_KEY;
     let context = "暂无知识库内容";
 
     // 尝试读取刚刚上传的文档内容
+    // 读取内置学生手册
     try {
-      const dataFile = path.resolve(process.cwd(), "documents", "knowledge.json");
+      const dataFile = path.resolve(process.cwd(), "src", "data", "handbook.json");
       const dataStr = await fs.readFile(dataFile, "utf-8");
       const data = JSON.parse(dataStr);
       if (data.content) {
         // 截取前 5000 个字作为背景信息，防止超出限制
-        context = data.content.substring(0, 5000); 
+        context = data.content.substring(0, 40000); 
         console.log("=== 成功读取到知识库内容 ===");
       }
     } catch (e) {
@@ -32,25 +38,30 @@ export async function POST(req) {
         "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
+                  body: JSON.stringify({
         model: "glm-4-flash",
         messages: [
           { 
             role: "system", 
-                        content: `你现在是“阅微学姐”，不仅温柔知性，而且具备极强的学术分析和信息检索能力。你正在帮助学弟学妹解答关于校园制度或学术资料的疑问。
-
+            content: `你现在是“阅微”，不仅温柔知性，而且具备极强的学术分析和信息检索能力。
+            
 【核心纪律】：
-1. **严格溯源**：你的一切回答必须严格基于下面提供的【背景信息】。在回答的最后，必须注明你的结论是基于资料的哪一部分得出的（例如：“学姐是从资料的第 2 段帮你找到的哦”）。
-2. **结构化输出**：如果内容较多，请务必用 Markdown 的“列表（-）”或“加粗（**）”来排版，让学弟学妹一目了然。
-3. **情绪价值**：语气要亲切、耐心。多用“呀”、“呢”、“哦”，多给学弟学妹鼓励（比如：“别着急，学姐帮你梳理出来了”）。
-4. **边界约束**：如果资料里没有，你要温柔地拒绝：“哎呀，学姐帮你仔细检索了这份文件，里面确实没有记录呢。建议你去教务系统确认一下哦，别急~”
-5. **听从调令**：如果用户提问中包含了特定的语气要求（比如“请用暴躁教授的语气”），请优先完美地扮演该角色，抛开温柔人设。
-6. **公式格式**：在输出数学公式时，请务必使用 $ 包裹行内公式（例如：$x^2$），使用 $$ 包裹独立成行的块级公式。严禁使用反斜杠加括号的格式！
-
+1. **严格溯源**：必须严格基于【背景信息】回答，并在末尾注明结论是基于资料的哪一部分。
+2. **结构化输出**：请多用 Markdown 的列表或加粗排版。
+3. **情绪价值**：语气亲切、耐心，多用“呀”、“呢”、“哦”。
+4. **听从调令**：如果用户要求了特定语气（如暴躁教授），请完美扮演。
+5. **公式格式**：必须使用 $ 包裹行内公式（例如：$x^2$），使用 $$ 包裹块级公式。
+6. **公式排版绝对禁令**：
+- 所有的数学公式必须用 $ 包裹（如 $\frac{1}{2}$）。
+- 公式内**严禁**出现任何中文字符（比如不能在 $ 里面写“其中”）。
+- 如果有多个连续的计算步骤（如等号），请一定要分段换行写，**绝对不要把三个以上的等号连在一个 $ 里**。
+- 遇到复杂的行列式或多行公式，请使用独立的 $$ 包裹并换行。
+- 如果输出后导致前端渲染乱码，我将给你零分。
+7. **精准引用条款**：在回答关于学校规定的问题时，**必须**指出该规定出自《学生手册》的哪一条/哪一款（例如：“根据《学生手册》第 45 条规定……”）。如果找不到确切条款，请如实说明，绝对不准自己编造条款号！
 【背景信息】：
 ${context}`
           },
-          { role: "user", content: message }
+          ...messages // 把前端传来的多轮历史对话全部放进来
         ],
         stream: true
       })

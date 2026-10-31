@@ -12,6 +12,24 @@ import 'katex/dist/katex.min.css';
  * - Document upload and ingestion
  * - Modern, responsive UI with Tailwind CSS
  */
+const formatMath = (text) => {
+  if (!text) return "";
+  let clean = text;
+  // 1. 处理不规范的反斜杠括号
+  clean = clean.split('\\[').join('$$$$');
+  clean = clean.split('\\]').join('$$$$');
+  clean = clean.split('\\(').join('$');
+  clean = clean.split('\\)').join('$');
+  
+    // 2. 使用最基础的方法替换未包裹的偏导数，绝对不报错
+  clean = clean.split('fxx').join('$f_{xx}$');
+  clean = clean.split('fxy').join('$f_{xy}$');
+  clean = clean.split('fyy').join('$f_{yy}$');
+  clean = clean.split('fx').join('$f_{x}$');
+  clean = clean.split('fy').join('$f_{y}$');
+  
+  return clean;
+};
 export default function Home() {
     const [messages, setMessages] = useState([
         {
@@ -56,10 +74,19 @@ export default function Home() {
         ]);
 
             try {
+            // 组装历史记录（只取 user 和 bot 的内容，格式化给智谱）
+      const historyMessages = messages.map(m => ({
+        role: m.role === "user" ? "user" : "assistant",
+        content: m.content
+      }));
+      
+      // 加上当前最新的问题
+      const requestMessages = [...historyMessages, { role: "user", content: currentQuery }];
+
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: currentQuery }),
+        body: JSON.stringify({ messages: requestMessages }), // 改为传数组
       });
 
       if (!res.ok) throw new Error("Network response was not ok");
@@ -228,9 +255,9 @@ export default function Home() {
                   {/* @ts-ignore */}
                   <ReactMarkdown 
                     remarkPlugins={[remarkGfm, remarkMath]} 
-                    rehypePlugins={[rehypeKatex]}
+                    rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
                   >
-                    {msg.content}
+                    {formatMath(msg.content)}
                   </ReactMarkdown>
                 </div>
                             </div>
