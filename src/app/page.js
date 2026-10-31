@@ -15,19 +15,8 @@ import 'katex/dist/katex.min.css';
 const formatMath = (text) => {
   if (!text) return "";
   let clean = text;
-  // 1. 处理不规范的反斜杠括号
-  clean = clean.split('\\[').join('$$$$');
-  clean = clean.split('\\]').join('$$$$');
-  clean = clean.split('\\(').join('$');
-  clean = clean.split('\\)').join('$');
-  
-    // 2. 使用最基础的方法替换未包裹的偏导数，绝对不报错
-  clean = clean.split('fxx').join('$f_{xx}$');
-  clean = clean.split('fxy').join('$f_{xy}$');
-  clean = clean.split('fyy').join('$f_{yy}$');
-  clean = clean.split('fx').join('$f_{x}$');
-  clean = clean.split('fy').join('$f_{y}$');
-  
+  clean = clean.split('\\[').join('$$$$').split('\\]').join('$$$$');
+  clean = clean.split('\\(').join('$').split('\\)').join('$');
   return clean;
 };
 export default function Home() {
@@ -99,20 +88,35 @@ export default function Home() {
       let done = false;
       let fullText = "";
 
+            // 🌟 核心改进：记录上一次渲染的时间
+      let lastRenderTime = Date.now();
+
       while (!done) {
         const { value, done: doneReading } = await reader.read();
         done = doneReading;
         if (value) {
           const chunk = decoder.decode(value, { stream: true });
           fullText += chunk;
-          // 实时更新最后那个 AI 气泡里的文字
-                  setMessages((prev) => {
-            const newMessages = [...prev];
-            newMessages[newMessages.length - 1].content = fullText;
-            return newMessages;
-          });
+
+          // 🌟 每 50 毫秒才更新一次界面，让打字机像真人一样平滑！
+          const now = Date.now();
+          if (now - lastRenderTime > 50 || done) {
+            setMessages((prev) => {
+              const newMessages = [...prev];
+              newMessages[newMessages.length - 1].content = fullText;
+              return newMessages;
+            });
+            lastRenderTime = now;
+          }
         }
       }
+      
+      // 确保最后一点点内容也完整显示出来
+      setMessages((prev) => {
+        const newMessages = [...prev];
+        newMessages[newMessages.length - 1].content = fullText;
+        return newMessages;
+      });
     } catch (err) {
       console.error("Chat Error:", err);
       setMessages((prev) => [...prev, { role: "bot", content: "抱歉，网络开小差了。" }]);
@@ -251,15 +255,20 @@ export default function Home() {
                                         : "bg-zinc-900 border border-zinc-800 text-zinc-200 rounded-tl-none"
                                     }`}
                             >
-                                            <div className="bg-transparent break-words text-sm leading-relaxed overflow-x-auto">
-                  {/* @ts-ignore */}
+                                                          <div className="bg-transparent break-words text-sm leading-relaxed overflow-x-auto">
+                {loading && idx === messages.length - 1 ? (
+                  // 🌟 正在流式输出时，强行使用纯文本显示，绝对不报错！
+                  <div className="whitespace-pre-wrap">{msg.content}</div>
+                ) : (
+                  // 🌟 输出结束后，瞬间渲染出完美的排版和公式！
                   <ReactMarkdown 
                     remarkPlugins={[remarkGfm, remarkMath]} 
                     rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
                   >
                     {formatMath(msg.content)}
                   </ReactMarkdown>
-                </div>
+                )}
+              </div>
                             </div>
                         </div>
                     ))}
